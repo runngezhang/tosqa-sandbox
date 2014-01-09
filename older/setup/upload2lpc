@@ -1,0 +1,46 @@
+# Upload a .bin file to LPCx, add "-v" to include some progress info:
+#		upload2lpc ?-v? firmware.bin
+#
+# Note: this needs to be run as root (sudo su)
+#
+# Upload to an LPCxxxx connected to the RPi serial port as:
+#
+#     ----------------        ------------------
+#    [ RPi            ]      [ LPCXpresso       ]
+#     ----------------        ------------------
+#    TX (pin P1.8)      <--> RX (pin J6.22, P0.3)
+#    RX (pin P1.10)     <--> TX (pin J6.21, P0.2)
+#    GND (pin P1.6)     <--> GND (pin J6.1)
+#    +5V (pin P1.2)     <--> EXT_POWX (pin J6.2)
+#    GPIO18 (pin P1.12) <--> RESET_N (pin J6.4)
+#    GPIO23 (pin P1.16) <--> P2.10 (Pin J6.51)
+
+if [ x"$1" = x"-v" ]; then shift; else verbose=-debug0; fi
+
+# export the two GPIO pins to the shell
+echo "18" >/sys/class/gpio/export
+echo "23" >/sys/class/gpio/export
+
+# use them as output pins
+echo "out" >/sys/class/gpio/gpio18/direction
+echo "out" >/sys/class/gpio/gpio23/direction
+
+# pull ISP low and prepare for reset
+echo "0" >/sys/class/gpio/gpio23/value
+echo "1" >/sys/class/gpio/gpio18/value
+
+(
+  # it is essential to delay the reset pulse for lpc21isp
+  sleep 0.3
+  # pulse reset low
+  echo "0" >/sys/class/gpio/gpio18/value
+  sleep 0.1
+  echo "1" >/sys/class/gpio/gpio18/value
+  sleep 0.1
+  # set ISP line high again
+  echo "1" >/sys/class/gpio/gpio23/value
+) &
+
+echo "Uploading... "
+/usr/local/tosca/bin/lpc21isp $verbose -bin $1 /dev/ttyAMA0 115200 12000 \
+  && echo "Done." || exit 1

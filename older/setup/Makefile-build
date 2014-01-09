@@ -1,0 +1,65 @@
+DEST_DIR = /usr/local/tosca
+
+CTNG_VER = crosstool-ng-1.16.0
+CTNG_URL = http://crosstool-ng.org/download/crosstool-ng/$(CTNG_VER).tar.bz2
+CONFIG_URL = https://raw.github.com/Nut-Bolt/tosca/master/setup/arm-config
+LPCISP_URL = https://github.com/pbrier/lpc21isp.git
+
+info:
+	# type "make ALL" to make everything from scratch
+	# type "make DIRS" to make sure all the required directories exist
+	# type "make CTNG" to install crosstool-ng (ends up in ~/ctng)
+	# type "make ARMGCC" to install the arm-none-eabi cross-compiler
+	# type "make ARMCONFIG" to adjust the arm-none-eabi build settings
+	# type "make LPCISP" to install the lpc21isp upload tool
+	# type "make TOSCA" to set up the ~tosca home directory
+	# type "make DIST" to create the tosca-{home,tools} distribution tars
+	# type "make CLEAN" to remove all the intermediate build results
+	# type "make DISTCLEAN" to also remove everything that has been installed
+
+ALL: DIRS CTNG ARMGCC LPCISP
+
+DIRS:
+	mkdir -p $(DEST_DIR)/bin tars
+
+CTNG: ctng.ok
+ctng.ok:
+	wget -N -P tars $(CTNG_URL)
+	tar xfj tars/$(CTNG_VER).tar.bz2
+	# needs fixing, see http://git.buildroot.net/buildroot/plain/package/crosstool-ng/crosstool-ng-000-makefile-recursion.patch
+	cd $(CTNG_VER) && ./configure --prefix=$(HOME)/ctng && make install
+	date >$@
+
+ARMGCC: CTNG armgcc.ok
+armgcc.ok:
+	mkdir -p mk-armgcc
+	wget -O mk-armgcc/.config $(CONFIG_URL)
+	cd mk-armgcc && ../ctng/bin/ct-ng oldconfig && ../ctng/bin/ct-ng build
+	cd $(DEST_DIR)/bin && ln -sf ../arm-none-eabi/bin/* .
+	date >$@
+
+ARMCONFIG: CTNG
+	cd mk-armgcc && ../ctng/bin/ct-ng menuconfig
+
+LPCISP: lpcisp.ok
+lpcisp.ok:
+	git clone $(LPCISP_URL) mk-lpcisp
+	cd mk-lpcisp && make && cp lpc21isp $(DEST_DIR)/bin
+	date >$@
+
+TOSCA: tosca.ok
+tosca.ok:
+	# not yet ...
+	date >$@
+
+DIST: ALL TOSCA
+	tar cfz tosca-home.tgz -C /home tosca
+	tar cfz tosca-tools.tgz -C /usr/local tosca
+
+CLEAN:
+	if [ -f ctng.ok ]; then rm -rf $(CTNG_VER); fi
+	if [ -f armgcc.ok ]; then rm -rf mk-armgcc; fi
+	if [ -f lpcisp.ok ]; then rm -rf mk-lpcisp; fi
+
+DISTCLEAN: CLEAN
+	rm -rf *.ok ctng $(DEST_DIR)
